@@ -31,10 +31,13 @@ public class FurnitureManager {
 	private HashSet<ObjectID> objecte = new HashSet<ObjectID>();
 	private List<Project> projects = new ArrayList<Project>();
 	private List<UUID> ignoreList = new ArrayList<UUID>();
+	private List<UUID> sendList = new ArrayList<UUID>();
 	public void setLastID(Integer i){this.i = i;}
 	public HashSet<ObjectID> getObjectList(){return this.objecte;}
 	public List<Chunk> chunkList = new ArrayList<Chunk>();
 	public List<UUID> getIgnoreList(){return this.ignoreList;}
+	public List<UUID> getSendList(){return this.sendList;}
+	
 	public void addProject(Project project){
 		if(isExist(project.getName())){
 			projects.remove(getProject(project.getName()));
@@ -99,7 +102,8 @@ public class FurnitureManager {
 	}
 	
 	public void updatePlayerView(Player player) {
-		if(this.objecte.isEmpty()){return;}
+		if(this.objecte.isEmpty() || !player.isOnline()){return;}
+		//player.sendMessage("test");
 		for(ObjectID obj : objecte){obj.updatePlayerView(player);}
 	}
 	
@@ -111,9 +115,7 @@ public class FurnitureManager {
 	
 	public void sendAll(){
 		for(ObjectID objID : objecte){
-			if(!objID.getSQLAction().equals(SQLAction.REMOVE)){
-				send(objID);
-			}
+			if(!objID.getSQLAction().equals(SQLAction.REMOVE)) send(objID);
 		}
 	}
 

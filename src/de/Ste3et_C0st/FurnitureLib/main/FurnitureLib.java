@@ -30,12 +30,20 @@ import org.bukkit.plugin.java.JavaPlugin;
 import de.Ste3et_C0st.FurnitureLib.Command.TabCompleterHandler;
 import de.Ste3et_C0st.FurnitureLib.Command.command;
 import de.Ste3et_C0st.FurnitureLib.Crafting.Project;
-import de.Ste3et_C0st.FurnitureLib.Database.CallBack;
 import de.Ste3et_C0st.FurnitureLib.Database.DeSerializer;
 import de.Ste3et_C0st.FurnitureLib.Database.Serializer;
 import de.Ste3et_C0st.FurnitureLib.Database.SQLManager;
 import de.Ste3et_C0st.FurnitureLib.Events.ChunkOnLoad;
 import de.Ste3et_C0st.FurnitureLib.Events.FurnitureEvents;
+import de.Ste3et_C0st.FurnitureLib.Events.internal.onChunkChange;
+import de.Ste3et_C0st.FurnitureLib.Events.internal.onCrafting;
+import de.Ste3et_C0st.FurnitureLib.Events.internal.onEntityExplode;
+import de.Ste3et_C0st.FurnitureLib.Events.internal.onPlayerChangeWorld;
+import de.Ste3et_C0st.FurnitureLib.Events.internal.onPlayerDeath;
+import de.Ste3et_C0st.FurnitureLib.Events.internal.onPlayerJoin;
+import de.Ste3et_C0st.FurnitureLib.Events.internal.onPlayerQuit;
+import de.Ste3et_C0st.FurnitureLib.Events.internal.onPlayerRespawn;
+import de.Ste3et_C0st.FurnitureLib.Events.internal.onPlayerTeleportEvent;
 import de.Ste3et_C0st.FurnitureLib.LimitationManager.LimitationManager;
 import de.Ste3et_C0st.FurnitureLib.ShematicLoader.ProjectManager;
 import de.Ste3et_C0st.FurnitureLib.Utilitis.ColorUtil;
@@ -75,13 +83,11 @@ public class FurnitureLib extends JavaPlugin{
 	private BlockManager bmanager;
 	private PublicMode mode;
 	private EventType type;
-	private WorldPool wPool;
 	private ProtocolFields field = ProtocolFields.Spigot110;
 	private ProjectManager pManager;
 	private PermissionHandler permissionHandler;
 	private String timePattern = "mm:ss:SSS";
-	private List<registerAPI> furnitureList = new ArrayList<registerAPI>();
-	private int purgeTime = 30, viewDistance = 100, asyncStepsPerSequenz = 100;
+	private int purgeTime = 30, viewDistance = 100;
 	private long purgeTimeMS = 0, spamBreakTime = 5000, spamPlaceTime = 5000;
 	public HashMap<Project, Long> deleteMap = new HashMap<Project, Long>();
 	public HashMap<UUID, Long> timeStampPlace = new HashMap<UUID, Long>();
@@ -94,6 +100,8 @@ public class FurnitureLib extends JavaPlugin{
 	public ColorUtil getColorManager(){return this.colorManager;}
 	public CraftingInv getCraftingInv(){return this.craftingInv;}
 	public String getBukkitVersion() {return Bukkit.getServer().getClass().getPackage().getName().replace(".", ",").split(",")[3];}
+	public String getTimeDif(long input, long dif, String pattern){return new SimpleDateFormat(pattern).format(new Date(dif - (System.currentTimeMillis() - input))).toString();}
+	public Updater getUpdater(){return updater;}
 	public LocationUtil getLocationUtil(){return this.lUtil;}
 	public FurnitureManager getFurnitureManager(){return this.manager;}
 	public ObjectID getObjectID(String c, String plugin, Location loc){return new ObjectID(c, plugin, loc);}
@@ -106,7 +114,6 @@ public class FurnitureLib extends JavaPlugin{
 	public BlockManager getBlockManager() {return bmanager;}
 	public SQLManager getSQLManager(){return this.sqlManager;}
 	public ProtocolFields getField() {return this.field;}
-	public WorldPool getWorldPool(){return this.wPool;}
 	public HashMap<String, List<String>> getPermissionList(){return this.permissionKit;}
 	public ProjectManager getProjectManager(){return this.pManager;}
 	public HashMap<UUID, Long> getTimePlace(){return this.timeStampPlace;}
@@ -115,10 +122,13 @@ public class FurnitureLib extends JavaPlugin{
 	public PermissionHandler getPermission(){return this.permissionHandler;}
 	public int getPurgeTime(){return this.purgeTime;}
 	public int getViewDistance(){return this.viewDistance;}
-	public int getStepSize(){return this.asyncStepsPerSequenz;}
 	public long getBreakTime(){return this.spamBreakTime;}
 	public long getPlaceTime(){return this.spamPlaceTime;}
 	public static FurnitureLib getInstance(){return instance;}
+
+	public void send(String s){getServer().getConsoleSender().sendMessage(s);}
+	private void loadMetrics(){try{if(getConfig().getBoolean("config.UseMetrics")){new bStats(getInstance());}}catch(Exception e){e.printStackTrace();}}
+
 	public boolean isGlowing(){return this.glowing;}
 	public boolean isAutoPurge(){return this.autoPurge;}
 	public boolean isPurgeRemove(){return this.removePurge;}
@@ -135,8 +145,11 @@ public class FurnitureLib extends JavaPlugin{
 	public boolean isDouble(String s){try{Double.parseDouble(s);}catch(NumberFormatException e){return false;}return true;}
 	public boolean isBoolean(String s){try {Boolean.parseBoolean(s.toLowerCase());}catch (Exception e) {return false;}return true;}
 	public boolean isInt(String s){try{Integer.parseInt(s);}catch(NumberFormatException e){return false;}return true;}
+	public boolean isAfterDate(long time, int purgeTime){return System.currentTimeMillis() - (time+purgeTimeMS) >0;}
+	private boolean isRightProtocollib(String s){return s.startsWith("4");}
+	public boolean checkPurge(ObjectID obj, UUID uuid){return checkPurge(obj, uuid, this.purgeTime);}
+	public boolean checkPurge(ObjectID obj, OfflinePlayer player){return checkPurge(obj, player.getUniqueId());}
 	
-	public Updater getUpdater(){return updater;}
 	@Override
 	public void onEnable(){
 		if(!isEnable("ProtocolLib", true)){send("§cProtocolLib not found");getPluginManager().disablePlugin(this);}else{
@@ -163,7 +176,6 @@ public class FurnitureLib extends JavaPlugin{
 				this.purgeTime = getConfig().getInt("config.Purge.time");
 				this.autoPurge = getConfig().getBoolean("config.Purge.autoPurge");
 				this.removePurge = getConfig().getBoolean("config.Purge.removePurge");
-				this.asyncStepsPerSequenz = getConfig().getInt("config.Database.asyncStepsPerSequenz");
 				this.viewDistance = (Bukkit.getViewDistance()*16)-2;
 				if(this.viewDistance>=getConfig().getInt("config.viewDistance")){
 					this.viewDistance = getConfig().getInt("config.viewDistance");
@@ -177,13 +189,11 @@ public class FurnitureLib extends JavaPlugin{
 				this.timePattern = getConfig().getString("config.spamBlock.timeDisplay");
 				this.rotateOnSit = getConfig().getBoolean("config.rotateOnSit");
 				this.updater = new Updater();
-				this.wPool = new WorldPool();
-				this.wPool.loadWorlds();
+//				this.wPool = new WorldPool();
+//				this.wPool.loadWorlds();
 				this.purgeTimeMS = TimeUnit.DAYS.toMillis(purgeTime);
 				this.pManager = new ProjectManager();
 				this.permissionHandler = new PermissionHandler();
-				new FurnitureEvents(instance, manager);
-				getServer().getPluginManager().registerEvents(new ChunkOnLoad(), this);
 				PluginCommand c = getCommand("furniture");
 				c.setExecutor(new command(this));
 				c.setTabCompleter(new TabCompleterHandler(this));
@@ -200,11 +210,8 @@ public class FurnitureLib extends JavaPlugin{
 					Boolean b = isEnable("ProtectionLib", false);
 					send("Furniture find ProtectionLib: §e" + b.toString());
 					createDefaultWatchers();
-					
-					PublicMode mode = PublicMode.valueOf(getConfig().getString("config.PlaceMode.Mode"));
-					EventType type = EventType.valueOf(getConfig().getString("config.PlaceMode.Access"));
-					if(mode!=null){this.mode = mode;}else{this.mode = PublicMode.PRIVATE;}
-					if(type!=null){this.type = type;}else{this.type = EventType.INTERACT;}
+					this.type = EventType.valueOf(getConfig().getString("config.PlaceMode.Access", "INTERACT"));
+					this.mode = PublicMode.valueOf(getConfig().getString("config.PlaceMode.Mode", "PRIVATE"));
 					this.bmanager = new BlockManager();
 					this.craftingInv = new CraftingInv(this);
 					for(Player p : Bukkit.getOnlinePlayers()){if(p.isOp()){getUpdater().sendPlayer(p);}}
@@ -214,25 +221,21 @@ public class FurnitureLib extends JavaPlugin{
 					this.sqlManager = new SQLManager(instance);
 					this.sqlManager.initialize();
 					this.loadIgnore();
-					
-					
-					this.sqlManager.loadALL(new CallBack() {
-						@Override
-						public void onResult(boolean b) {
-							if(b){
-								if(getConfig().getBoolean("config.timer.Enable")){int time = getConfig().getInt("config.timer.time");sqlManager.saveIntervall(time);}
-								Bukkit.getScheduler().runTaskLater(getInstance(), new Runnable() {
-									
-									@Override
-									public void run() {
-										pManager.loadProjectFiles();
-										send("§2Furniture load finish :)");
-									}
-								}, 5);
-							}
-						}
-					});
-					
+					this.sqlManager.loadALL();
+					this.pManager.loadProjectFiles();
+					new FurnitureEvents(instance, manager);
+					getServer().getPluginManager().registerEvents(new onCrafting(), getInstance());
+					getServer().getPluginManager().registerEvents(new onEntityExplode(), getInstance());
+					getServer().getPluginManager().registerEvents(new onPlayerChangeWorld(), getInstance());
+					getServer().getPluginManager().registerEvents(new onPlayerDeath(), getInstance());
+					getServer().getPluginManager().registerEvents(new onPlayerJoin(), getInstance());
+					getServer().getPluginManager().registerEvents(new onPlayerQuit(), getInstance());
+					getServer().getPluginManager().registerEvents(new onPlayerRespawn(), getInstance());
+					getServer().getPluginManager().registerEvents(new onPlayerTeleportEvent(), getInstance());
+					getServer().getPluginManager().registerEvents(new ChunkOnLoad(), getInstance());
+					getServer().getPluginManager().registerEvents(new onChunkChange(), getInstance());
+					send("§2Furniture load finish :)");
+					if(getConfig().getBoolean("config.timer.Enable")){int time = getConfig().getInt("config.timer.time");sqlManager.saveIntervall(time);}
 					send("==========================================");
 				}else{
 					send("Furniture Lib deosn't find the correct ProtocolLib");
@@ -248,7 +251,13 @@ public class FurnitureLib extends JavaPlugin{
 		}
 	}
 	
-	private void loadMetrics(){try{if(getConfig().getBoolean("config.UseMetrics")){new bStats(getInstance());}}catch(Exception e){e.printStackTrace();}}
+	private void createDefaultWatchers(){
+		for(World w : Bukkit.getWorlds()){
+			if(w!=null){
+				getFurnitureManager().getDefaultWatcher(w, EntityType.ARMOR_STAND);
+			}
+		}
+	}
 	
 	private void loadIgnore() {
 		config c = new config(getInstance());
@@ -300,17 +309,12 @@ public class FurnitureLib extends JavaPlugin{
 	
 	private void saveIgnore(){
 		List <String> ignoreList = new ArrayList<String>();
-		for(UUID uuid : getFurnitureManager().getIgnoreList()){
-			ignoreList.add(uuid.toString());
-		}
+		for(UUID uuid : getFurnitureManager().getIgnoreList()) ignoreList.add(uuid.toString());
 		config c = new config(this);
 		FileConfiguration configuration = c.getConfig("ignoredPlayers", "");
 		configuration.set("ignoreList", ignoreList);
 		c.saveConfig("ignoredPlayers", configuration, "");
 	}
-	
-	private boolean isRightProtocollib(String s){return s.startsWith("4");}
-	public void send(String s){getServer().getConsoleSender().sendMessage(s);}
 	
 	public boolean checkPurge(ObjectID obj, UUID uuid, int purgeTime){
 		OfflinePlayer player = Bukkit.getOfflinePlayer(uuid);
@@ -322,36 +326,17 @@ public class FurnitureLib extends JavaPlugin{
 		return true;
 	}
 	
-	public boolean checkPurge(ObjectID obj, UUID uuid){return checkPurge(obj, uuid, this.purgeTime);}
-	public boolean checkPurge(ObjectID obj, OfflinePlayer player){return checkPurge(obj, player.getUniqueId());}
-	
-	public boolean isAfterDate(long time, int purgeTime){
-		if(System.currentTimeMillis() - (time+purgeTimeMS) >0){return true;}
-		return false;
-	}
-	
-	private void createDefaultWatchers(){
-		for(World w : Bukkit.getWorlds()){
-			if(w!=null){
-				getFurnitureManager().getDefaultWatcher(w, EntityType.ARMOR_STAND);
+	public void registerPluginFurnitures(Plugin plugin){
+		List<ObjectID> objList = new ArrayList<ObjectID>();
+		for(ObjectID obj : manager.getObjectList()){
+			if(obj==null) continue;
+			if(objList.contains(obj)) continue;
+			if(!objList.contains(obj)) objList.add(obj);
+			if(obj.getPlugin()==null) continue;
+			if(obj.getSQLAction().equals(SQLAction.REMOVE)) continue;
+			if(obj.getPlugin().equalsIgnoreCase(plugin.getName())){
+				spawn(obj.getProjectOBJ(), obj);
 			}
-		}
-	}
-	
-	public registerAPI registerPluginFurnitures(Plugin plugin, CallBack callback){
-		for(registerAPI api : this.furnitureList) {
-			if(api.getPlugin().equals(plugin)) {
-				return null;
-			}
-		}
-		registerAPI api = new registerAPI(plugin, callback);
-		furnitureList.add(api);
-		return api;
-	}
-	
-	public void triggerRegister() {
-		for(registerAPI api : this.furnitureList) {
-			api.trigger();
 		}
 	}
 	
@@ -405,9 +390,5 @@ public class FurnitureLib extends JavaPlugin{
 			ctor.newInstance(obj);
 			obj.setFinish();
 		} catch (Exception e) {e.printStackTrace();}
-	}
-	
-	public String getTimeDif(long input, long dif, String pattern){
-		return new SimpleDateFormat(pattern).format(new Date(dif - (System.currentTimeMillis() - input))).toString();
 	}
 }

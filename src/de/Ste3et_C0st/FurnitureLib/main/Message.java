@@ -15,12 +15,12 @@ public class Message {
 		msg+=s;
 	}
 	
-	public void sendMessage(Player p){
-		try {
-			PacketContainer container = new PacketContainer(PacketType.Play.Server.CHAT);
-			container.getChatComponents().write(0, WrappedChatComponent.fromJson(msg));
-			ProtocolLibrary.getProtocolManager().sendServerPacket(p, container);
-		} catch (Exception e) {e.printStackTrace();}
-	}
+//	public void sendMessage(Player p){
+//		try {
+//			PacketContainer container = new PacketContainer(PacketType.Play.Server.CHAT);
+//			container.getChatComponents().write(0, WrappedChatComponent.fromJson(msg));
+//			ProtocolLibrary.getProtocolManager().sendServerPacket(p, container);
+//		} catch (Exception e) {e.printStackTrace();}
+//	}
 	
 }

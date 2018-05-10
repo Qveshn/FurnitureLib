@@ -16,10 +16,10 @@ import de.Ste3et_C0st.FurnitureLib.main.Type.DataBaseType;
 import de.Ste3et_C0st.FurnitureLib.main.Type.SQLAction;
 
 public abstract class Database {
-	FurnitureLib plugin;
-    Connection connection;
-    Statement statement;
-    CallBack callBack;
+	public FurnitureLib plugin;
+	public Connection connection;
+    private Statement statement;
+    @SuppressWarnings("unused")
     boolean result = false;
     public Database(FurnitureLib instance){
         this.plugin = instance;
@@ -29,16 +29,6 @@ public abstract class Database {
 
     public abstract void load();
     public abstract DataBaseType getType();
-    
-    public boolean isExist(String s){
-    	try{
-    		boolean query = statement.execute("SELECT * FROM `"+s+"`");
-    		if(query){return true;}
-    	}catch(Exception e){
-    		return false;
-    	}
-    	return false;
-    }
     
     public void initialize(){
         connection = getSQLConnection();
@@ -51,9 +41,22 @@ public abstract class Database {
             plugin.getLogger().log(Level.SEVERE, "Unable to retreive connection", ex);
         }
     }
-    
+//    
+//    private void addNewCollums(){
+//    	String q1 = "ALTER TABLE `FurnitureLib_Objects` ADD COLUMN `id` INTEGER PRIMARY KEY AUTOINCREMENT;";
+//    	//String q2 = "ALTER TABLE `FurnitureLib_Objects` ADD COLUMN IF NOT EXISTS `world` TINYTEXT;";
+//    	try {
+//    		statement.executeUpdate(q1);
+//    		//statement.executeUpdate("ALTER TABLE `FurnitureLib_Objects` ADD COLUMN `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST;");
+//			//statement.executeUpdate(q2);dfsagfdsakhjfd sabnkfldsöa
+//		} catch (Exception e) {
+//			e.printStackTrace();
+//		}
+//    }
+//    
     public boolean save(ObjectID id){
     	String binary = FurnitureLib.getInstance().getSerializer().SerializeObjectID(id);
+    	//String query = "REPLACE INTO FurnitureLib_Objects (`id`,`ObjID`,`Data`,`world`) VALUES ('', '" + id.getID() + "', '" + binary + "', '"+ id.getWorld().getUID().toString() + "');";
     	String query = "REPLACE INTO FurnitureLib_Objects (`ObjID`,`Data`) VALUES ('" + id.getID() + "', '" + binary + "');";
     	try{
     		statement.executeUpdate(query);
@@ -72,70 +75,27 @@ public abstract class Database {
     	}
     	return false;
     }
-
-    public void loadAll(final SQLAction action, final CallBack callBack){
-    	final long time1 = System.currentTimeMillis();
-    	final boolean b = FurnitureLib.getInstance().isAutoPurge();
-    	this.callBack = callBack;
-    	loadFurnitures(0, b, action);
-    	this.callBack2 = new CallBack() {
-			@Override
-			public void onResult(boolean b) {
-				if(b){
-					plugin.getLogger().info("FurnitureLib load " + FurnitureLib.getInstance().getFurnitureManager().getObjectList().size()  +  " Objects from: " + getType().name() + " Database");
-		        	long time2 = System.currentTimeMillis();
-		        	long newTime = time2-time1;
-		        	SimpleDateFormat time = new SimpleDateFormat("mm:ss.SSS");
-		        	String timeStr = time.format(newTime);
-		        	int ArmorStands = FurnitureLib.getInstance().getDeSerializer().armorStands;
-		        	int purged = FurnitureLib.getInstance().getDeSerializer().purged;
-		        	plugin.getLogger().info("FurnitureLib have loadet " + ArmorStands + " in " +timeStr);
-		        	plugin.getLogger().info("FurnitureLib have purged " + purged + " Objects");
-		        	for(ObjectID id : FurnitureLib.getInstance().getFurnitureManager().getObjectList()){
-		        		id.sendAll();
-		        	}
-		        	
-		        	callBack.onResult(true);
-				}
-			}
-		};
+    
+    public void loadAll(SQLAction action){
+    	long time1 = System.currentTimeMillis();
+    	boolean b = FurnitureLib.getInstance().isAutoPurge();
+    	try{
+    		ResultSet rs = statement.executeQuery("SELECT * FROM FurnitureLib_Objects");
+    		while (rs.next()){FurnitureLib.getInstance().getDeSerializer().Deserialze(rs.getString(1), rs.getString(2), action, b);}
+    		rs.close();
+    		plugin.getLogger().info("FurnitureLib load " + FurnitureLib.getInstance().getFurnitureManager().getObjectList().size()  +  " Objects from: " + getType().name() + " Database");
+    		long time2 = System.currentTimeMillis();
+	    	long newTime = time2-time1;
+	    	SimpleDateFormat time = new SimpleDateFormat("mm:ss.SSS");
+	    	String timeStr = time.format(newTime);
+	    	int ArmorStands = FurnitureLib.getInstance().getDeSerializer().armorStands;
+	    	int purged = FurnitureLib.getInstance().getDeSerializer().purged;
+	    	plugin.getLogger().info("FurnitureLib have loadet " + ArmorStands + " in " +timeStr);
+	    	plugin.getLogger().info("FurnitureLib have purged " + purged + " Objects");
+    	}catch(Exception e){
+    		e.printStackTrace();
+    	}
     }
-    
-
-    private CallBack callBack2;
-    
-    public boolean loadFurnitures(final int i, final boolean b, final SQLAction action){
-    	if(result) return false;
-    	new Thread(new Runnable() {
-    		@Override
-			public void run() {
-    			try{
-    				int count = FurnitureLib.getInstance().getStepSize();
-    				int offset = i, j = 0;
-        			String query = "SELECT * FROM FurnitureLib_Objects LIMIT " + count + " OFFSET " + offset;
-        			ResultSet rs = statement.executeQuery(query);
-        			while (rs.next()){
-        				FurnitureLib.getInstance().getDeSerializer().Deserialze(rs.getString(1), rs.getString(2), action, b);
-        				j++;
-        			}
-        			if(!rs.next()){
-		    			rs.close();
-		    			if(j != count){
-		    				result = true;
-		    				callBack2.onResult(true);
-		    				return;
-		    			}else{
-		    				loadFurnitures(i + count, b, action);
-		    				return;
-		    			}
-		    		}
-    			}catch(Exception ex){
-    				ex.printStackTrace();
-    			}
-    		}
-    	}).start();
-    	return false;
-	}
 
     public void delete(ObjectID objID){
     	try {
